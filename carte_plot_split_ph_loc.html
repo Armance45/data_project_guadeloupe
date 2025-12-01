@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Guadeloupe · Comparaison pH</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+  <style>
+    :root { --o1:#0077b6; --o2:#00b4d8; --o3:#90e0ef; --ink:#0e1b2a; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, var(--o1), var(--o2), var(--o3));
+    }
+    header { color:#fff; text-align:center; padding:16px 10px; background:rgba(0,0,0,.25); border-bottom:2px solid rgba(255,255,255,.25);}
+    header h1 { margin:0; font-size:1.6rem; }
+    header .subtitle { margin-top:6px; opacity:.95; }
+
+    .wrap { max-width: 1400px; margin: 14px auto 18px; padding: 0 12px; }
+    .split { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+    @media (max-width: 900px) { .split { grid-template-columns:1fr; } }
+
+    .card {
+      background: rgba(255,255,255,0.14);
+      border: 2px solid rgba(255,255,255,0.28);
+      border-radius: 16px; padding: 10px; backdrop-filter: blur(6px);
+      min-height: 60vh; display:flex; flex-direction:column;
+    }
+
+    #map { flex:1; min-height:60vh; border-radius:12px; }
+    .leaflet-container { background: transparent !important; }
+    #plot { flex:1; min-height:52vh; border-radius:12px; }
+
+    .panel-title { color:#fff; font-weight:700; margin:6px 6px 10px; display:flex; justify-content:space-between; align-items:center; }
+    .notice { margin:8px 6px 0; padding:8px 10px; color:#1b3a4b; background:#e9f6ff; border:1px solid #b6e1ff; border-radius:10px; display:none; }
+
+    .year-bar { display:flex; gap:8px; flex-wrap:wrap; margin: 6px 6px 12px; }
+    .year-btn {
+      appearance:none; border:2px solid #fff; background: rgba(255,255,255,0.18);
+      color:#fff; font-weight:800; padding:8px 14px; border-radius:12px; cursor:pointer;
+      backdrop-filter: blur(3px); transition: transform .15s, background .15s;
+    }
+    .year-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.28); }
+    .year-btn.active { background:#fff; color:#0077b6; }
+    .year-btn.disabled { opacity:.45; cursor:not-allowed; }
+
+    .location-label { color:#fff; margin: 2px 8px 8px; font-weight:600; min-height: 1.2em; }
+    
+    .top-nav {
+      padding: 8px 12px;
+      text-align: center;
+      background: rgba(0,0,0,0.15);
+    }
+    .nav-btn {
+      display: inline-block;
+      margin: 0 8px;
+      padding: 6px 12px;
+      background: #fff;
+      color: var(--o1);
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border: 1px solid rgba(0,0,0,0.2);
+      transition: background .15s, color .15s;
+    }
+    .nav-btn:hover {
+      background: var(--o3);
+      color: var(--ink);
+    }
+    .clear-btn {
+        background: rgba(255, 200, 200, 0.3); border: 1px solid rgba(255,255,255,0.5);
+        color: #fff; padding: 4px 8px; border-radius: 8px; cursor: pointer; font-size: 0.8rem;
+        margin-left: 10px; display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-nav">
+    <a href="descripteur_1_ph.html" class="nav-btn">first descriptor</a>
+    <a href="descripteur_2_ph.html" class="nav-btn">second descriptor</a>
+    <a href="descripteur_3_ph.html" class="nav-btn">third descriptor</a>
+    <a href="descripteur_4_ph.html" class="nav-btn">fourth descriptor</a>
+  </div>
+  <header>
+    <h1>Guadeloupe — Comparateur de pH</h1>
+    <div class="subtitle">Cliquez sur plusieurs localisations pour comparer les niveaux d'acidité</div>
+  </header>
+
+  <div class="wrap">
+    <div class="split">
+      <section class="card">
+        <div class="panel-title">
+          <span>Carte détaillée (OpenStreetMap)</span>
+          <span style="font-size:.95rem;opacity:.95">Zoom & déplacez librement</span>
+        </div>
+        <div id="map"></div>
+      </section>
+
+      <section class="card">
+        <div class="panel-title">
+            <span id="plotTitle">Courbes comparatives</span>
+        </div>
+        <div class="location-label">
+            <span id="locLabel">Aucune localisation sélectionnée</span>
+            <button id="clearAllBtn" class="clear-btn" onclick="clearSelections()">Tout effacer</button>
+        </div>
+        <div class="year-bar" id="yearBar"></div>
+        <div id="plot"></div>
+        <p id="msg" class="notice"></p>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // --- Helpers ---
+    const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+    const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const MONTH_ALIASES = { "Fevrier":"Février", "Aout":"Août" };
+    const YEAR_RANGE = Array.from({length: 7}, (_, i) => String(2016 + i));
+
+    function normalizeMonthLabel(label) {
+      if (!label) return null;
+      let part = String(label).split(/[_\-]/).pop().trim();
+      part = part.replace(/^Fevrier$/i,"Février").replace(/^Aout$/i,"Août");
+      return part;
+    }
+
+    function monthIndex(frLabel) {
+      const idx = MONTHS_FR.indexOf(frLabel);
+      if (idx >= 0) return idx;
+      const alt = MONTH_ALIASES[frLabel] || frLabel;
+      return MONTHS_FR.indexOf(alt);
+    }
+
+    function toFloat(x) {
+      if (x === null || x === undefined) return null;
+      const s = String(x).trim().replace(",", ".");
+      if (s === "" || /^(na|nan|null|none|-)$/.test(s.toLowerCase())) return null;
+      const v = parseFloat(s);
+      return Number.isFinite(v) ? v : null;
+    }
+
+    function showMsg(txt) { const el = document.getElementById('msg'); el.textContent = txt; el.style.display = 'block'; }
+    function hideMsg() { const el = document.getElementById('msg'); el.style.display = 'none'; }
+
+    let DATA = null, LOCS = [];
+    let SELECTED_LOCS = [];
+    const ACTIVE_YEARS = new Set();
+    
+    let map = null;
+    const markers = {};
+    let mapLegend = null;
+    let GLOBAL_MIN_AVG = Infinity;
+    let GLOBAL_MAX_AVG = -Infinity;
+
+    // --- Load JSON ---
+    (async function loadData(){
+      try {
+        const r = await fetch('pH_Combined.json', {cache:'no-store'});
+        if (!r.ok) throw new Error('HTTP '+r.status);
+        DATA = await r.json();
+      } catch (e) {
+        showMsg("Impossible de charger pH_Combined.json");
+        console.error(e);
+        return;
+      }
+
+      const mapByKey = new Map();
+      let foundDataCount = 0;
+
+      for (const row of DATA) {
+        const id = row.ID ?? "";
+        const lon = toFloat(row.LON);
+        const lat = toFloat(row.LAT);
+        const year = String(row.Year ?? "").trim();
+        const monthLabel = normalizeMonthLabel(row.Month);
+        const mIdx = monthIndex(monthLabel);
+        
+        // CORRECTION ICI : on utilise exactement "Ph_Level" comme dans votre fichier
+        const phValue = toFloat(row.Ph_Level);
+
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+        if (!year || mIdx < 0 || mIdx > 11) continue;
+        
+        if (phValue !== null) foundDataCount++;
+
+        const key = `${id}|${lat}|${lon}`;
+        if (!mapByKey.has(key)) {
+          mapByKey.set(key, {
+            id: id || `(${lat.toFixed(4)}, ${lon.toFixed(4)})`,
+            lat, lon,
+            years: {}
+          });
+        }
+        const loc = mapByKey.get(key);
+        if (!loc.years[year]) loc.years[year] = Array(12).fill(null);
+        loc.years[year][mIdx] = phValue;
+      }
+
+      LOCS = Array.from(mapByKey.values());
+      
+      if (foundDataCount === 0) {
+         showMsg("Aucune donnée pH trouvée (colonne 'Ph_Level' manquante ?)");
+      }
+
+      calculateGlobalMinMax();
+      initMap(LOCS);
+      buildYearButtons();
+      initEmptyPlot();
+    })();
+
+    function getYearlyAvg(tempsArray) {
+      const validTemps = tempsArray.filter(t => t !== null && Number.isFinite(t));
+      if (validTemps.length === 0) return null;
+      return validTemps.reduce((a, b) => a + b, 0) / validTemps.length;
+    }
+
+    function calculateGlobalMinMax() {
+      let min = Infinity, max = -Infinity;
+      LOCS.forEach(loc => {
+        YEAR_RANGE.forEach(y => {
+          if (loc.years[y]) {
+            const avg = getYearlyAvg(loc.years[y]);
+            if (avg !== null) {
+              if (avg < min) min = avg;
+              if (avg > max) max = avg;
+            }
+          }
+        });
+      });
+      if (isFinite(min)) GLOBAL_MIN_AVG = min;
+      if (isFinite(max)) GLOBAL_MAX_AVG = max;
+      
+      if (GLOBAL_MIN_AVG === Infinity) GLOBAL_MIN_AVG = 7.8;
+      if (GLOBAL_MAX_AVG === -Infinity) GLOBAL_MAX_AVG = 8.4;
+    }
+
+    function calculateLocationAvg(loc, yearsSet) {
+      if (yearsSet.size === 0) return null;
+      const allTemps = [];
+      yearsSet.forEach(y => { if (loc.years[y]) allTemps.push(...loc.years[y]); });
+      const valid = allTemps.filter(t => t !== null && Number.isFinite(t));
+      return valid.length === 0 ? null : valid.reduce((a,b)=>a+b,0)/valid.length;
+    }
+
+    function getColor(value, min, max) {
+      if (value === null || !Number.isFinite(value)) return '#888';
+      if (min === max) return 'hsl(200, 90%, 60%)';
+      const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+      return `hsl(${200 * (1 - t)}, 90%, ${60 - 20 * t}%)`;
+    }
+
+    // --- Map Updates ---
+
+    function updateMapColors() {
+      if (ACTIVE_YEARS.size === 0) {
+         Object.values(markers).forEach(m => {
+            m.setStyle({ radius: 7, color:'#0a79bf', weight:2, fillColor:'#23a6d5', fillOpacity:0.9 });
+         });
+      } else {
+         const avgData = LOCS.map(loc => ({ loc, avg: calculateLocationAvg(loc, ACTIVE_YEARS) }));
+         LOCS.forEach(loc => {
+            const m = markers[loc.id]; if (!m) return;
+            const data = avgData.find(d => d.loc.id === loc.id);
+            if (data && data.avg !== null) {
+              m.setStyle({ radius: 8, color: '#333', weight: 1, fillColor: getColor(data.avg, GLOBAL_MIN_AVG, GLOBAL_MAX_AVG), fillOpacity: 1.0 });
+            } else {
+              m.setStyle({ radius: 6, color: '#999', weight: 1, fillColor: '#ccc', fillOpacity: 0.5 });
+            }
+         });
+      }
+      updateLegend();
+      highlightSelectedMarkers();
+    }
+
+    function highlightSelectedMarkers() {
+        SELECTED_LOCS.forEach(loc => {
+            const m = markers[loc.id];
+            if (m) {
+                m.setStyle({ weight: 4, color: '#ff0000', radius: 10, fillOpacity: 1 });
+                m.bringToFront();
+            }
+        });
+    }
+
+    function updateLegend() {
+      if (mapLegend) map.removeControl(mapLegend);
+      if (ACTIVE_YEARS.size === 0) return;
+
+      mapLegend = L.control({ position: 'bottomright' });
+      mapLegend.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'info legend');
+        div.style.background = 'rgba(255,255,255,0.85)'; div.style.padding = '8px'; div.style.borderRadius = '6px';
+        div.style.border = '1px solid #777'; div.style.color = '#333'; div.style.minWidth = '50px';
+        
+        const yearsStr = [...ACTIVE_YEARS].sort().join(', ');
+        div.innerHTML = `<strong style="font-size:0.9em;">Échelle Globale (pH)</strong><br>
+                         <span style="font-size:0.85em;">Moy. pour: ${yearsStr}</span>`;
+        const content = L.DomUtil.create('div', '', div);
+        content.style.display = 'flex'; content.style.marginTop = '6px';
+        const labels = L.DomUtil.create('div', '', content);
+        labels.style.display = 'flex'; labels.style.flexDirection = 'column'; labels.style.justifyContent = 'space-between';
+        labels.style.paddingRight = '6px'; labels.style.fontSize = '0.9em'; labels.style.fontWeight = 'bold';
+        labels.innerHTML = `<span>${GLOBAL_MAX_AVG.toFixed(2)}</span><span style="opacity:0.7;">${((GLOBAL_MAX_AVG+GLOBAL_MIN_AVG)/2).toFixed(2)}</span><span>${GLOBAL_MIN_AVG.toFixed(2)}</span>`;
+        const bar = L.DomUtil.create('div', '', content);
+        bar.style.height = '100px'; bar.style.width = '15px'; bar.style.border = '1px solid #555';
+        bar.style.background = `linear-gradient(to top, hsl(200,90%,60%), hsl(150,90%,55%), hsl(100,90%,50%), hsl(50,90%,45%), hsl(0,90%,40%))`;
+        return div;
+      };
+      mapLegend.addTo(map);
+    }
+
+    // --- Selection UI ---
+
+    function updateSelectionUI() {
+        const count = SELECTED_LOCS.length;
+        const labelEl = document.getElementById('locLabel');
+        const clearBtn = document.getElementById('clearAllBtn');
+        
+        if (count === 0) {
+            labelEl.textContent = "Aucune localisation sélectionnée (cliquez sur la carte)";
+            clearBtn.style.display = 'none';
+            document.getElementById('plotTitle').textContent = 'Courbes comparatives';
+        } else if (count === 1) {
+             const loc = SELECTED_LOCS[0];
+             labelEl.textContent = `Sélection : (${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)})`;
+             clearBtn.style.display = 'inline-block';
+        } else {
+            labelEl.textContent = `${count} localisations sélectionnées pour comparaison`;
+            clearBtn.style.display = 'inline-block';
+        }
+    }
+
+    function clearSelections() {
+        SELECTED_LOCS = [];
+        updateMapColors();
+        updateSelectionUI();
+        redraw();
+    }
+
+    // --- Plotly ---
+
+    function initEmptyPlot(){
+      Plotly.newPlot('plot', [], {
+        margin: { t: 50, r: 20, b: 60, l: 70 },
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#fff' },
+        title: { text: 'Sélectionnez des points sur la carte...', x: 0.05, y: 0.95 },
+        xaxis: { title: 'Mois', gridcolor: 'rgba(255,255,255,0.2)' },
+        yaxis: { title: { text: 'pH', standoff: 8 }, gridcolor: 'rgba(255,255,255,0.2)' }
+      }, {responsive: true, displayModeBar: false});
+    }
+
+    function buildYearButtons(){
+      const bar = document.getElementById('yearBar'); bar.innerHTML = '';
+      YEAR_RANGE.forEach(y=>{
+        const btn = document.createElement('button');
+        btn.className = 'year-btn'; btn.textContent = y; btn.dataset.year = y;
+        btn.addEventListener('click', ()=>{
+          if (ACTIVE_YEARS.has(y)) { ACTIVE_YEARS.delete(y); btn.classList.remove('active'); }
+          else { ACTIVE_YEARS.add(y); btn.classList.add('active'); }
+          updateMapColors();
+          redraw();
+        });
+        bar.appendChild(btn);
+      });
+    }
+
+    // --- Map Init ---
+
+    function initMap(locations){
+      const world = L.latLngBounds([-85, -180], [85, 180]);
+      map = L.map('map', { zoomControl: true, minZoom: 3, maxZoom: 18 });
+      map.setMaxBounds(world);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap', maxZoom: 19, noWrap: true, bounds: world
+      }).addTo(map);
+
+      const gwadaBounds = L.latLngBounds([15.8, -62.2], [16.7, -60.9]);
+      map.fitBounds(gwadaBounds);
+
+      const markerLayer = L.layerGroup().addTo(map);
+      locations.forEach(p=>{
+        const m = L.circleMarker([p.lat, p.lon], {
+          radius: 7, color:'#0a79bf', weight:2, fillColor:'#23a6d5', fillOpacity:0.9
+        }).addTo(markerLayer);
+        markers[p.id] = m;
+
+        m.bindTooltip(`(${p.lat.toFixed(3)}, ${p.lon.toFixed(3)})`, {direction:'top', offset:[0,-5], opacity:0.8});
+        
+        m.on('click', () => {
+          const index = SELECTED_LOCS.findIndex(l => l.id === p.id);
+          if (index > -1) { SELECTED_LOCS.splice(index, 1); } 
+          else { SELECTED_LOCS.push(p); }
+          updateMapColors();
+          updateSelectionUI();
+          redraw();
+        });
+      });
+    }
+
+    // --- Redraw ---
+
+    function redraw(){
+      const layout = {
+        margin: { t: 50, r: 20, b: 60, l: 70 },
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#fff' },
+        title: {
+          text: SELECTED_LOCS.length > 0 ? 'pH comparé' : 'Sélectionnez une ou plusieurs localisations',
+          x: 0.05, y: 0.95
+        },
+        xaxis: { title: 'Mois', gridcolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.4)' },
+        yaxis: { title: { text: 'pH', standoff: 8 }, gridcolor: 'rgba(255,255,255,0.2)', zerolinecolor: 'rgba(255,255,255,0.4)' },
+        legend: { orientation:'h', x:0.5, xanchor:'center', y:-0.5, yanchor:'top', bgcolor: 'rgba(0,0,0,0.5)' },
+        hovermode: 'x unified'
+      };
+
+      if (SELECTED_LOCS.length === 0) {
+        showMsg("Cliquez sur la carte pour sélectionner des points à comparer.");
+        Plotly.react('plot', [], layout, {responsive:true, displayModeBar: false});
+        return;
+      }
+
+      const traces = [];
+      const sortedYears = Array.from(ACTIVE_YEARS).sort();
+      SELECTED_LOCS.forEach((loc) => {
+          sortedYears.forEach(y => {
+            const arr = (loc.years||{})[y];
+            if (arr && arr.some(v => v !== null && v !== undefined)) {
+              traces.push({
+                type: 'scatter', mode: 'lines+markers',
+                x: MONTHS_SHORT, y: arr,
+                name: `${y} · (${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)})`,
+                marker: { size: 6 }, line: { width: 2 },
+                hovertemplate: `<b>(${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)})</b><br>Année ${y}: pH %{y:.3f}<extra></extra>`
+              });
+            }
+          });
+      });
+
+      if (traces.length === 0) {
+        if (ACTIVE_YEARS.size === 0) showMsg("Sélectionnez au moins une année.");
+        else showMsg("Pas de données pour cette sélection.");
+      } else {
+        hideMsg();
+      }
+      Plotly.react('plot', traces, layout, {responsive:true, displayModeBar: false});
+    }
+
+    window.addEventListener('resize', () => { Plotly.Plots.resize('plot'); if(map) map.invalidateSize(); });
+  </script>
+</body>
+</html>
