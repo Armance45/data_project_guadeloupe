@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guadeloupe · Descriptor 4 (Moy_max) · Temperature</title>
+    
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
+    <style>
+        /* Styles from your new example file */
+        :root { 
+            --o1:#0077b6; 
+            --o2:#00b4d8; 
+            --o3:#90e0ef; 
+            --ink:#0e1b2a; 
+
+            --card-bg: rgba(255, 255, 255, 0.2);
+            --card-border: rgba(255, 255, 255, 0.4);
+            --blue-bg-gradient-start: #35a7db;
+            --blue-bg-gradient-end: #007bb6;
+        }
+        * { 
+            box-sizing: border-box; 
+        }
+        html, body { 
+            height: 100%; 
+        }
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            color: var(--ink);
+            background: linear-gradient(180deg, var(--blue-bg-gradient-start), var(--blue-bg-gradient-end));
+            background-attachment: fixed;
+        }
+        
+        /* Main container */
+        .wrap { 
+            max-width: 1000px; 
+            margin: 14px auto 18px; 
+            padding: 0 12px; 
+        }
+
+        /* Header */
+        header { 
+            color:#fff; 
+            text-align:center; 
+            padding:16px 10px; 
+            background:rgba(0,0,0,.25); 
+            border-bottom:2px solid rgba(255,255,255,.25);
+            margin-bottom: 20px;
+        }
+        header h1 { 
+            margin:0; 
+            font-size:1.8rem; 
+        }
+        header p { 
+            margin-top:6px; 
+            opacity:.95; 
+            font-size: 1rem;
+        }
+
+        /* The "frosted glass" card */
+        .card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 16px; 
+            padding: 16px; 
+            backdrop-filter: blur(6px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Container for the Plotly chart */
+        #plot {
+            position: relative;
+            height: 60vh;
+            width: 100%;
+            border-radius: 8px;
+        }
+        
+        /* Title inside the card */
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #fff;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 16px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* Error Message Box */
+        #statusMessage {
+            text-align: center;
+            color: #fff;
+            background: #d90429;
+            font-weight: 500;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none; /* Hidden by default */
+        }
+        
+        /* Top navigation bar */
+        .top-nav {
+          padding: 8px 12px;
+          text-align: center;
+          background: rgba(0,0,0,0.15);
+        }
+        .nav-btn {
+          display: inline-block;
+          margin: 0 8px;
+          padding: 6px 12px;
+          background: #fff;
+          color: var(--o1);
+          text-decoration: none;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 0.9rem;
+          border: 1px solid rgba(0,0,0,0.2);
+          transition: background .15s, color .15s;
+        }
+        .nav-btn:hover {
+          background: var(--o3);
+          color: var(--ink);
+        }
+
+        footer { 
+            text-align: center; 
+            margin-top: 18px; 
+            font-size: 0.9rem; 
+            color: #fff;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+      <a href="temperature_test_new.html" class="nav-btn">⬅️</a>
+      <a href="index.html" class="nav-btn">Return home</a>
+    </div>
+
+    <header>
+        <h1>Guadeloupe — Descriptor 4: Temperature (Moy_max)</h1>
+        <p>
+            Mean number of months per year where temperature is above 75% of the annual local max.
+        </p>
+    </header>
+
+    <div class="wrap">
+        <main class="card">
+            <div id="statusMessage"></div>
+            
+            <h2>Annual Mean (Moy_max) and Standard Deviation (Et_max)</h2>
+            
+            <div id="plot"></div>
+        </main>
+        
+        <footer>
+            <p>Generated for temporal data analysis.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- This is the Plotly.js script for Descriptor 4 (Temperature) ---
+
+        // --- Helpers ---
+        const YEAR_RANGE = ["2016","2017","2018","2019","2020","2021","2022","2023"];
+
+        function toFloat(x) {
+          if (x === null || x === undefined) return null;
+          const s = String(x).trim().replace(",", ".");
+          if (s === "" || /^(na|nan|null|none|-)$/.test(s.toLowerCase())) return null;
+          const v = parseFloat(s);
+          return Number.isFinite(v) ? v : null;
+        }
+
+        function showMsg(txt) { 
+          const el = document.getElementById('statusMessage'); 
+          el.textContent = txt; 
+          el.style.display = 'block'; 
+        }
+
+        // --- Stat Calculation Functions ---
+        function calculateMean(arr) {
+          if (!arr || arr.length === 0) return null;
+          const sum = arr.reduce((a, b) => a + b, 0);
+          return sum / arr.length;
+        }
+
+        function calculateStdDev(arr) {
+          if (!arr || arr.length < 2) return null;
+          const mean = calculateMean(arr);
+          const sumOfSquares = arr.reduce((a, v) => a + Math.pow(v - mean, 2), 0);
+          return Math.sqrt(sumOfSquares / (arr.length - 1));
+        }
+
+        /**
+         * NEW FUNCTION for Descriptor 4
+         * Counts months where value is > 75% of the window's (year's) max.
+         */
+        function countMonthsAbove75Max(arr) {
+          if (!arr || arr.length === 0) return 0;
+          
+          const validValues = arr.filter(v => v !== null && Number.isFinite(v));
+          if (validValues.length === 0) return 0;
+
+          // 1. Find the max value in the window (year)
+          const maxVal = Math.max(...validValues);
+          
+          // 2. Calculate the threshold
+          const threshold = 0.75 * maxVal;
+
+          // 3. Count months above the threshold
+          let count = 0;
+          for (const v of arr) { // Iterate over all 12 months
+            // For temperature, we count v > threshold
+            if (v !== null && Number.isFinite(v) && v > threshold) {
+              count++;
+            }
+          }
+          return count;
+        }
+
+        // --- Data Loading and Processing ---
+        (async function loadAndPlot(){
+          let rawData = null;
+          try {
+            const r = await fetch('sea_temp_all.json', {cache:'no-store'});
+            if (!r.ok) throw new Error('HTTP '+r.status);
+            rawData = await r.json();
+          } catch (e) {
+            showMsg("Failed to load sea_temp_all.json. " + e.message);
+            console.error(e);
+            return;
+          }
+
+          // 1. Aggregate Descriptor 4 values by year
+          const yearData = {}; // e.g., { "2016": [1, 2, 1, ...], "2017": [2, 1, 2, ...] }
+          YEAR_RANGE.forEach(y => { yearData[y] = []; });
+
+          const locations = (rawData.locations || []).map(loc => {
+            const years = {};
+            const ymap = loc.years || {};
+            Object.keys(ymap).forEach(y => {
+              const arr = Array.isArray(ymap[y]) ? ymap[y].slice(0,12) : [];
+              years[String(y)] = Array.from({length:12}, (_,i)=> toFloat(arr[i]));
+            });
+            return { years };
+          });
+          
+          // Loop over each location
+          for (const loc of locations) {
+            // Loop over each year for this location
+            for (const y of YEAR_RANGE) {
+              const values = loc.years[y]; // The 12 months for year 'y'
+              if (!values) continue; // No data for this year
+
+              // 1. Calculate D4: Nbr of months > 75% of the annual max
+              const countAbove75MaxVal = countMonthsAbove75Max(values);
+              
+              // 2. Store this count (the D4 value)
+              if (values.some(v => v !== null && Number.isFinite(v))) {
+                  yearData[y].push(countAbove75MaxVal);
+              }
+            }
+          }
+
+          // 2. Calculate Moy_max and Et_max for each year
+          const results = [];
+          for (const y of YEAR_RANGE) {
+            const d4_values_for_year = yearData[y];
+            const mean = calculateMean(d4_values_for_year);    // Moy_max
+            const stdDev = calculateStdDev(d4_values_for_year); // Et_max
+            results.push({
+              year: y,
+              mean: mean,
+              stdDev: stdDev,
+              count: d4_values_for_year.length // This is the number of locations
+            });
+          }
+          
+          // 3. Draw the plot
+          drawPlot(results);
+        })();
+
+        function drawPlot(results) {
+          const x_years = results.map(r => r.year);
+          const y_means = results.map(r => r.mean);
+          const y_stdDevs = results.map(r => r.stdDev);
+          
+          // MODIFIED: Hover text for D4
+          const hover_text = results.map(r => 
+            `Year: ${r.year}<br>` +
+            `Mean (Moy_max): ${r.mean ? r.mean.toFixed(2) : 'N/A'} months<br>` +
+            `Std. Dev (Et_max): ${r.stdDev ? r.stdDev.toFixed(2) : 'N/A'} months<br>` +
+            `No. of locations: ${r.count}`
+          );
+
+          const trace = {
+            type: 'bar',
+            x: x_years,
+            y: y_means,
+            // MODIFIED: Legend label
+            name: 'Mean (Moy_max)',
+            hoverinfo: 'text',
+            hovertext: hover_text,
+            marker: {
+              color: 'rgba(255, 255, 255, 0.7)',
+              line: {
+                color: 'rgba(255, 255, 255, 0.9)',
+                width: 2
+              }
+            },
+            // Standard Deviation error bars
+            error_y: {
+              type: 'data',
+              array: y_stdDevs,
+              // MODIFIED: Legend label
+              name: 'Standard Deviation (Et_max)',
+              color: 'rgba(255,255,255,0.9)',
+              thickness: 2,
+              width: 6
+            }
+          };
+
+          const layout = {
+            margin: { t: 20, r: 20, b: 60, l: 70 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#fff' },
+            title: { text: '' }, // Title is in HTML <h2>
+            xaxis: {
+              title: 'Year',
+              gridcolor: 'rgba(255,255,255,0.2)',
+              zerolinecolor: 'rgba(255,255,255,0.4)'
+            },
+            yaxis: {
+              // MODIFIED: Y-axis title
+              title: 'Months > 75% Annual Max (Avg)',
+              gridcolor: 'rgba(255,255,255,0.2)',
+              zerolinecolor: 'rgba(255,255,255,0.4)',
+              range: [0, 10] // Zoom to 0-10 months
+            },
+            legend: {
+              orientation:'h', x:0.5, xanchor:'center', y:-0.2,
+              bgcolor: 'rgba(0,0,0,0.2)',
+              font: { color: '#fff' }
+            },
+            // Style the tooltip to match screenshot
+            hoverlabel: {
+              bgcolor: "#fff",
+              font: { color: "#000" } 
+            }
+          };
+
+          Plotly.newPlot('plot', [trace], layout, {responsive: true, displayModeBar: false});
+        }
+
+        window.addEventListener('resize', () => Plotly.Plots.resize('plot'));
+    </script>
+</body>
+</html>
